@@ -1,0 +1,479 @@
+<html>
+	<head>
+		<style>
+            #GameInfo {
+                position: absolute;
+                top: 10px;
+                left: 10px;
+                background: rgba(0,0,0,0.5);
+                padding: 10px;
+                border-radius: 5px;
+                color: white;
+                font-family: Arial;
+                z-index: 200;
+            }
+            
+            .info-item {
+                margin: 5px 0;
+                font-size: 16px;
+            }
+            
+            @font-face {
+                font-family: flappybird;
+                src: url('https://www.dafontfree.net/04B-19.font');
+            }
+            
+			body{
+				margin: 0;
+				width:100%;
+				height:100%;
+                overflow: hidden;
+			}
+			#Canvas{
+				position:relative;
+				width: 100%;
+				height: 100%;
+				background: steelblue;
+			}
+			#Birdy{
+				width: 2.9%;
+                padding-bottom: 2%;
+                background-image: url('http://flappybird.io/img/bird.png');
+                background-size: 300%;
+				position:absolute;
+				top: 50%;
+				left: 20%;
+                z-index: 150;
+			}
+            
+            .FallenBirdy{
+                transform:rotate(90deg);
+            }
+            
+            #PauseButton{
+                position:absolute;
+                top: 2%; 
+                right: 1%;
+                width: 3%;
+                padding-top: 1.25%;
+                padding-bottom: 1.75%;
+                background: orange;
+                border-radius: 5px;
+                font-size: 2.6vw;
+                text-align: center;
+                z-index: 50;
+                cursor:pointer;
+            }
+            #PauseButton span{
+                line-height: 3%;
+                margin-left: 3%;
+            }
+            
+            .Pipe{
+                position:absolute;
+                top: 0;
+                left: 100%;
+                width: 5%;
+                background: greenyellow;
+                animation: PipeMovement 15s linear;
+            }
+            
+            .Coin {
+                position: absolute;
+                width: 3%;
+                height: 3%;
+                background: gold;
+                border-radius: 50%;
+                animation: PipeMovement 10s linear;
+                z-index: 100;
+                box-shadow: 0 0 10px yellow;
+            }
+            
+			.Bomb {
+             position: absolute;
+             width: 3%;
+             height: 3%;
+             background: linear-gradient(45deg, #ff0000, #800000);
+             clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+             animation: PipeMovement 8s linear;
+             z-index: 100;
+             box-shadow: 0 0 20px red;
+             }
+
+            
+            @keyframes PipeMovement{
+                from {left: 100%}
+                to {left: -25%}
+            }
+            
+            .paused {
+                animation-play-state: paused;
+             }
+             
+             .noSelect{
+                 user-select: none;
+             }
+             
+             #LostScoreScreen{
+                position: relative;
+                left: -50%;
+                margin-top: -70%;
+                padding: 5px 0px 5px 12px;
+                background: #ded895;
+                border-radius: 4%;
+                border: 2px solid black;
+                text-align: center;
+                display: none;
+                font-family: flappybird;
+                font-size: 2vw;
+                color:white;                
+                text-shadow: -2px -2px 0 #000,  
+                    2px -2px 0 #000,
+                    -2px 2px 0 #000,
+                    2px 2px 0 #000;
+                z-index: 150;
+             }
+		</style>
+        <link rel="stylesheet" href="http://netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css">
+	</head>
+	<body>
+		<div id="Canvas">
+            <div id="GameInfo" class="noSelect">
+                <div class="info-item">Score: <span id="LiveScore">0</span></div>
+                <div class="info-item">Gravity: <span id="GravityLevel">1.00x</span></div>
+            </div>
+
+            <div id="InstructionBox" style="position: absolute; left: 50%; display:none;">
+                <div style="position: relative; left: -50%; z-index: 150; font-family:flappybird; color:white; font-size: 2vw;" class="noSelect">
+                    Click to Fly <br>
+                    Space Bar to Reset <br>
+                    "P" to Pause
+                </div>
+            </div>
+            
+            <div style="position: absolute; left: 50%; top: 50%;">
+                <div id="LostScoreScreen" class="noSelect">
+                    <span>Score</span>
+                    <br>
+                    <span id="FinalScore">0</span>
+                    <br>
+                    <span>Best</span>
+                    <br>
+                    <span id="BestScore">0</span>
+                    <br>
+                    <button id="ResetButton" type="button" class="btn btn-warning">Reset</button>
+                </div>
+            </div>
+            
+			<div id="Birdy" style=" background-position-x: 400%;">
+			</div>
+            <div id="PauseButton" class="noSelect">
+                <span class="glyphicon glyphicon-pause"></span>
+            </div>
+		</div>
+
+		<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+		<script>
+			$(function(){
+				// Audio Setup
+				let audioContext;
+				try {
+					audioContext = new (window.AudioContext || window.webkitAudioContext)();
+				} catch(e) {
+					console.log("Web Audio API not supported");
+				}
+
+				function createBeep(frequency = 800, duration = 0.1) {
+					if(!audioContext) return;
+					
+					const oscillator = audioContext.createOscillator();
+					const gainNode = audioContext.createGain();
+					
+					oscillator.connect(gainNode);
+					gainNode.connect(audioContext.destination);
+					
+					oscillator.type = 'square';
+					oscillator.frequency.value = frequency;
+					gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+					
+					oscillator.start();
+					gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+					oscillator.stop(audioContext.currentTime + duration);
+				}
+
+				// Initialize audio on first click
+				$('#Canvas').one('click', () => {
+					if(audioContext && audioContext.state === 'suspended') {
+						audioContext.resume();
+					}
+				});
+
+				// Game Variables
+				let baseGravity = 0.15;
+				let currentGravityMultiplier = 1;
+				let CurrentScore = 0;
+				let pipesPassed = 0;
+				let gameLoopIntervalID = 0;
+				let Paused = true;
+				let Lost = false;
+
+				function playCoinSound() { createBeep(1000, 0.2); }
+				function playPipeSound() { createBeep(400, 0.1); }
+				function playExplosionSound() { createBeep(200, 0.5); }
+
+				function updateGameInfo() {
+					$('#LiveScore').text(CurrentScore);
+					$('#GravityLevel').text(currentGravityMultiplier.toFixed(2) + 'x');
+				}
+
+				function pauseGame(){
+					clearInterval(gameLoopIntervalID);
+					$('.Pipe, .Coin, .Bomb').addClass('paused');
+					$('#PauseButton span').removeClass('glyphicon-pause').addClass('glyphicon-play');
+					Paused = true;
+				}
+
+				function startGame(){
+					if(Lost) return;
+					gameLoopIntervalID = setInterval(gameLoop, 30);
+					$('.Pipe, .Coin, .Bomb').removeClass('paused');
+					$('#PauseButton span').removeClass('glyphicon-play').addClass('glyphicon-pause');
+					Paused = false;
+				}
+
+				function endGame(){
+					Lost = true;
+					pauseGame();              
+					let cookieScore = getCookie('HighScore');      
+					setCookie('HighScore', Math.max(CurrentScore,cookieScore), 30000);
+					Birdy.BirdyObject.animate({top:'90%'}, 1500, 'linear');
+					$('#FinalScore').html(CurrentScore);
+					$('#BestScore').html(Math.max(CurrentScore,cookieScore));
+					$('#LostScoreScreen').slideDown();
+					playExplosionSound();
+				}
+
+				function resetGame(){
+					pauseGame();
+					$('.Pipe, .Coin, .Bomb').remove();
+					Lost = false;
+					CurrentScore = 0;
+					pipesPassed = 0;
+					currentGravityMultiplier = 1;
+					Birdy.Reset();
+					startGame();                    
+					$('#LostScoreScreen').slideUp();
+					updateGameInfo();
+				}
+
+				function togglePause(){
+					if(!Paused) pauseGame();
+					else startGame();
+				}
+
+				$('#InstructionBox').slideDown();
+				setTimeout(() => $('#InstructionBox').slideUp(), 5000);
+
+				const canvasObject = $('#Canvas');
+				let gameLoopCounter = 0;
+
+				const Birdy = new (function(){
+					const selectorObject = $('#Birdy');
+					let jumping = false;
+					let gravVeloc = 0;
+					let Angle = 0;
+					let WingPosition = 0;
+					const WingPositions = [0, 1, 2, 1];
+					
+					this.Reset = function(){
+						jumping = false;
+						gravVeloc = 0;
+						Angle = 0;
+						WingPosition = 0;
+						selectorObject.stop().rotate(0).css('top','50%');
+					}
+					
+					this.fall = function(){
+						if(!jumping){
+							selectorObject.stop().animate({top:'+='+gravVeloc+'%'}, 30, 'linear');
+							gravVeloc = Math.min(gravVeloc + (baseGravity * currentGravityMultiplier), 3.5);
+							const AdjustedAngle = Angle+15*(gravVeloc/3.5)^2;
+							adjustAngle(Math.min(AdjustedAngle,90));
+						}
+					};
+					
+					this.jump = function(){
+						if(Paused) return;
+						jumping = true;
+						adjustAngle(-45);
+						selectorObject.stop().animate({top:'-=14%'}, 200, 'linear', () => {
+							jumping = false;
+							this.fall();
+						});
+					};
+					
+					this.flapWings = function(){
+						WingPosition++;
+						if(Angle > 45) WingPosition = 1;
+						selectorObject.css("background-position-x", WingPositions[WingPosition%4]*50 + "%");
+					}
+					
+					function adjustAngle(angle){
+						selectorObject.rotate(angle);
+						Angle = angle;
+					}
+					
+					this.BirdyObject = selectorObject;
+				})();
+
+				function gameLoop(){
+					if(gameLoopCounter % 2 === 0){
+						incrementScore();
+						checkCollisions();
+						checkCoins();
+					}
+					
+					updateGameInfo();
+					isInBound(Birdy.BirdyObject, canvasObject);
+					Birdy.fall();
+					
+					if(gameLoopCounter%70 === 0) addPipe();
+					if(gameLoopCounter%100 === 0) spawnCoin();
+					if(gameLoopCounter%120 === 0) spawnBomb();
+					
+					if(gameLoopCounter%7 === 0) Birdy.flapWings();
+					
+					cleanObjects();
+					gameLoopCounter++;
+				}
+
+				function addPipe(){
+					const PipeGap = 70, MinPipeHeight = 50;
+					const MaxTopPipeHeight = 100-PipeGap-2*MinPipeHeight;
+					const TopPipeHeight = Math.random()*MaxTopPipeHeight+MinPipeHeight;
+					const BottomPipeTop = TopPipeHeight+PipeGap;
+					const BottomPipeHeight = 100-BottomPipeTop;
+					
+					$('<div/>').addClass('Pipe').css('height',TopPipeHeight+'%').data('scored', false).appendTo(canvasObject); 
+					$('<div/>').addClass('Pipe BottomPipe').css({height:BottomPipeHeight+'%',top: BottomPipeTop+'%'}).data('scored', false).appendTo(canvasObject); 
+				}
+
+				function spawnCoin(){
+					const coinTop = 10 + Math.random() * 80;
+					$('<div/>').addClass('Coin').css({
+						top: coinTop + '%',
+						left: '100%'
+					}).appendTo(canvasObject);
+				}
+
+				function spawnBomb() {
+					const bombTop = 10 + Math.random() * 80;
+					$('<div/>').addClass('Bomb').css({
+						top: bombTop + '%',
+						left: '100%'
+					}).appendTo(canvasObject);
+				}
+
+				function cleanObjects(){
+					$('.Pipe, .Coin, .Bomb').each(function(){
+						if($(this).offset().left/$(this).parent().width() < -0.2){ 
+							$(this).remove();
+						}
+					});
+				}
+
+				function checkCollisions(){
+					$('.Pipe, .Bomb').each(function(){
+						if(isIntersecting(Birdy.BirdyObject, $(this))) endGame();
+					});
+				}
+
+				function checkCoins(){
+					$('.Coin').each(function(){
+						if(isIntersecting(Birdy.BirdyObject, $(this))){
+							$(this).remove();
+							CurrentScore += 1;
+							playCoinSound();
+							updateGameInfo();
+						}
+					});
+				}
+
+				function incrementScore(){
+					$('.BottomPipe').each(function(){
+						const BirdyBeakXPos = Birdy.BirdyObject.offset().left + Birdy.BirdyObject.width();
+						const PipeRightXPos = $(this).offset().left + $(this).width();
+						if(!$(this).data('scored') && BirdyBeakXPos>PipeRightXPos){
+							CurrentScore++;
+							pipesPassed++;
+							currentGravityMultiplier = 1 + Math.min(pipesPassed/50, 2);
+							$(this).data('scored', true);
+							playPipeSound();
+						}
+					});
+				}
+
+				function isIntersecting(obj1, obj2){
+					const obj1Dimensions = [
+						obj1.offset().left, 
+						obj1.offset().top, 
+						obj1.offset().left+obj1.width(), 
+						obj1.offset().top+obj1.height()
+					];
+					const obj2Dimensions = [
+						obj2.offset().left, 
+						obj2.offset().top, 
+						obj2.offset().left+obj2.width(), 
+						obj2.offset().top+obj2.height()
+					];
+					
+					return !(obj1Dimensions[3] < obj2Dimensions[1] ||
+							obj1Dimensions[1] > obj2Dimensions[3] ||
+							obj1Dimensions[0] > obj2Dimensions[2] ||
+							obj1Dimensions[2] < obj2Dimensions[0] );
+				}
+
+				function isInBound(birdy, canvas){
+					if(birdy.offset().top+birdy.height()> canvas.offset().top+canvas.height() || 
+					   birdy.offset().top<canvas.offset().top){ 
+						endGame();
+					}
+				}
+
+				$('#PauseButton').mousedown(e => {
+					e.stopPropagation();
+					togglePause();
+				});
+
+				$('#ResetButton').click(resetGame);
+				canvasObject.mousedown(() => Birdy.jump());
+				$('body').keydown(e => {
+					if(e.which == 32) resetGame();
+					if(e.which == 80) togglePause();
+				});
+
+				jQuery.fn.rotate = function(degrees) {
+                    return this.css({'transform': 'rotate(' + degrees + 'deg)'});
+                };
+
+				function setCookie(cname, cvalue, exdays) {
+                    const d = new Date();
+                    d.setTime(d.getTime() + (exdays * 86400000));
+                    document.cookie = cname + "=" + cvalue + ";expires=" + d.toUTCString() + ";path=/";
+                }
+
+				function getCookie(cname) {
+					const name = cname + "=";
+					const ca = document.cookie.split(';');
+					for(let i=0; i<ca.length; i++) {
+						let c = ca[i].trim();
+						if (c.indexOf(name) == 0) return c.substring(name.length,c.length);
+					}
+					return "";
+				}
+
+				startGame();
+			});
+		</script>
+	</body>
+</html>
